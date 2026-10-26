@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>Registro de Cajas</title>
+<style>
+  :root{--bg:#f3f6f6;--card:#fff;--ink:#12201f;--muted:#5f7371;--brand:#0f766e;--brand2:#14b8a6;--danger:#c62828;--line:#dbe5e4}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);padding-bottom:40px}
+  header{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;padding:calc(18px + env(safe-area-inset-top)) 16px 22px;position:sticky;top:0;z-index:5;box-shadow:0 2px 10px #0003}
+  header h1{margin:0;font-size:20px}
+  .counter{margin-top:6px;font-size:15px;opacity:.95}
+  .counter b{font-size:28px;vertical-align:-3px}
+  main{max-width:560px;margin:0 auto;padding:14px}
+  .card{background:var(--card);border-radius:16px;padding:14px;margin-bottom:14px;box-shadow:0 1px 4px #0001}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:14px;padding:16px;font-size:18px;font-weight:700;cursor:pointer;color:#fff;background:var(--brand)}
+  .btn:active{transform:scale(.98)}
+  .btn:disabled{opacity:.5}
+  .btn.alt{background:#fff;color:var(--brand);border:2px solid var(--brand)}
+  .btn.big{padding:22px;font-size:20px}
+  .btn.danger{background:var(--danger)}
+  .btn.small{width:auto;padding:8px 12px;font-size:14px;border-radius:10px}
+  .row{display:flex;gap:10px;margin-top:10px}
+  .row>*{flex:1}
+  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px;font-weight:600}
+  input[type=text]{width:100%;font-size:18px;padding:13px;border:2px solid var(--line);border-radius:12px;background:#fafcfc;color:var(--ink)}
+  input[type=text]:focus{outline:none;border-color:var(--brand2)}
+  #preview{display:none;width:100%;max-height:220px;object-fit:contain;border-radius:12px;margin-top:12px;background:#000}
+  .status{font-size:14px;margin-top:10px;min-height:20px;color:var(--muted)}
+  .status.ok{color:var(--brand)}.status.err{color:var(--danger)}
+  .meta{font-size:13px;color:var(--muted);margin-top:10px}
+  h2{font-size:16px;margin:0 0 10px}
+  .item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line)}
+  .item:first-of-type{border-top:0}
+  .item .code{font-weight:800;font-size:16px;letter-spacing:.3px}
+  .item .name{font-size:14px}
+  .item .date{font-size:12px;color:var(--muted)}
+  .del{background:none;border:0;font-size:20px;color:var(--danger);padding:8px;cursor:pointer}
+  .empty{color:var(--muted);text-align:center;padding:14px}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#12201f;color:#fff;padding:12px 18px;border-radius:30px;font-size:15px;opacity:0;pointer-events:none;transition:.25s;z-index:20}
+  .toast.show{opacity:1}
+  input[type=file]{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 Registro de Cajas</h1>
+  <div class="counter">Cajas registradas: <b id="count">0</b></div>
+</header>
+
+<main>
+  <div class="card">
+    <button class="btn big" id="btnCam">📷 Tomar foto de la etiqueta</button>
+    <div class="row"><button class="btn alt" id="btnGal">🖼️ Elegir de la galería</button></div>
+    <input type="file" id="fileCam" accept="image/*" capture="environment">
+    <input type="file" id="fileGal" accept="image/*">
+    <img id="preview" alt="Vista previa">
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>Datos de la etiqueta</h2>
+    <label for="code">Número de la etiqueta (antes del “/”)</label>
+    <input type="text" id="code" placeholder="CMT261590053" autocapitalize="characters" autocomplete="off">
+    <label for="name">Nombre del destinatario</label>
+    <input type="text" id="name" placeholder="NOMBRE APELLIDOS" autocapitalize="characters" autocomplete="off">
+    <div class="meta">🕒 Fecha y hora de la foto: <b id="stamp">—</b></div>
+    <div class="row">
+      <button class="btn" id="btnSave">💾 Guardar</button>
+      <button class="btn alt" id="btnClear">Limpiar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Registros recientes</h2>
+    <div id="list"></div>
+  </div>
+
+  <div class="card">
+    <button class="btn" id="btnExport">📊 Exportar a Excel / CSV</button>
+    <div class="row"><button class="btn danger small" id="btnWipe">Borrar todo</button></div>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const KEY='registro_cajas_v1';
+  const $=id=>document.getElementById(id);
+  const CAP=window.Capacitor||null;
+  const isNative=!!(CAP&&CAP.isNativePlatform&&CAP.isNativePlatform());
+  const plug=n=>(CAP&&CAP.Plugins&&CAP.Plugins[n])||null;
+  let photoDate=null;
+  let busy=false;
+  let records=[];
+  try{records=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){records=[]}
+
+  const pad=n=>String(n).padStart(2,'0');
+  const fmt=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const persist=()=>localStorage.setItem(KEY,JSON.stringify(records));
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2200)}
+  function status(t,c){const e=$('status');e.textContent=t;e.className='status '+(c||'')}
+  function setBusy(b){busy=b;['btnCam','btnGal','btnSave'].forEach(i=>$(i).disabled=b)}
+
+  function render(){
+    $('count').textContent=records.length;
+    const l=$('list');
+    if(!records.length){l.innerHTML='<div class="empty">Aún no hay registros</div>';return}
+    l.innerHTML=records.slice().reverse().slice(0,30).map(r=>`
+      <div class="item">
+        <div><div class="code">${esc(r.codigo)}</div><div class="name">${esc(r.destinatario)}</div><div class="date">${esc(r.fecha)}</div></div>
+        <button class="del" data-id="${r.id}" aria-label="Eliminar">🗑️</button>
+      </div>`).join('');
+  }
+
+  // ---------- Utilidades de imagen y OCR (todo local, sin internet) ----------
+  function loadScript(src){
+    return new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src=src;s.onload=res;s.onerror=()=>rej(new Error('No se pudo cargar '+src));
+      document.head.appendChild(s);
+    });
+  }
+  function loadImage(src){
+    return new Promise((res,rej)=>{
+      const img=new Image();
+      img.onload=()=>res(img);img.onerror=rej;img.src=src;
+    });
+  }
+  function toCanvas(img,max){
+    const s=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement('canvas');
+    c.width=Math.round(img.naturalWidth*s);c.height=Math.round(img.naturalHeight*s);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    return c;
+  }
+  function parseCode(text){
+    const t=String(text).toUpperCase().replace(/O(?=\d)/g,'0');
+    const m=t.match(/CMT\s*([0-9]{8,12})/);
+    return m?('CMT'+m[1]):'';
+  }
+  function parseName(text){
+    const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const letters=/^[A-Za-zÁÉÍÓÚÑáéíóúñ ]+$/;
+    for(let i=0;i<lines.length;i++){
+      const m=lines[i].match(/DEST\w{0,10}\s*[:;.]?\s*(.*)/i);
+      if(!m)continue;
+      let name=m[1].replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ ]/g,' ').replace(/\s+/g,' ').trim();
+      const nxt=lines[i+1];
+      if(nxt&&!/\d/.test(nxt)&&letters.test(nxt)&&nxt.trim().split(/\s+/).length<=3)name=(name+' '+nxt.trim()).trim();
+      if(name)return name.toUpperCase();
+    }
+    return '';
+  }
+  async function readBarcode(canvas){
+    // 1) Lector nativo del sistema, si existe
+    if('BarcodeDetector' in window){
+      try{
+        const det=new BarcodeDetector({formats:['code_128','code_39','code_93','codabar','itf']});
+        const found=await det.detect(canvas);
+        for(const b of found){const c=parseCode(b.rawValue||'');if(c)return c}
+      }catch(e){}
+    }
+    // 2) Lector incluido en la app (ZXing)
+    try{
+      if(!window.ZXing)await loadScript('ocr/zxing.min.js');
+      const Z=window.ZXing;
+      const hints=new Map();
+      hints.set(Z.DecodeHintType.POSSIBLE_FORMATS,[Z.BarcodeFormat.CODE_128,Z.BarcodeFormat.CODE_39]);
+      hints.set(Z.DecodeHintType.TRY_HARDER,true);
+      const reader=new Z.MultiFormatReader();reader.setHints(hints);
+      const bmp=new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(canvas)));
+      return parseCode(reader.decode(bmp).getText());
+    }catch(e){return ''}
+  }
+  let workerP=null;
+  function getWorker(){
+    if(!workerP){
+      workerP=(async()=>{
+        await loadScript('ocr/tesseract.min.js');
+        const abs=p=>new URL(p,location.href).href;
+        return Tesseract.createWorker('eng',1,{
+          workerPath:abs('ocr/worker.min.js'),
+          corePath:abs('ocr/core'),
+          langPath:abs('ocr/lang'),
+          workerBlobURL:false,
+          gzip:true
+        });
+      })();
+      workerP.catch(()=>{workerP=null});
+    }
+    return workerP;
+  }
+  async function readText(canvas){
+    const w=await getWorker();
+    const r=await w.recognize(canvas);
+    return (r&&r.data&&r.data.text)||'';
+  }
+
+  // ---------- Procesar foto ----------
+  async function processImage(src,date){
+    photoDate=date;
+    $('stamp').textContent=fmt(date);
+    $('code').value='';$('name').value='';
+    setBusy(true);
+    status('Leyendo etiqueta… puede tardar unos segundos');
+    try{
+      const img=await loadImage(src);
+      const p=$('preview');p.src=src;p.style.display='block';
+      const canvas=toCanvas(img,1600);
+      let code=await readBarcode(canvas);
+      if(code)$('code').value=code;
+      let name='';
+      try{
+        const text=await readText(canvas);
+        if(!code){code=parseCode(text);if(code)$('code').value=code}
+        name=parseName(text);
+        if(name)$('name').value=name;
+      }catch(e){}
+      if(code&&name)status('✔ Datos leídos. Revísalos y toca Guardar.','ok');
+      else if(code||name)status('Se leyó una parte. Completa lo que falte y toca Guardar.','ok');
+      else status('No se pudo leer. Escribe los datos a mano (se ven en la foto).','err');
+    }catch(e){status('No se pudo abrir la foto. Intenta de nuevo.','err')}
+    setBusy(false);
+  }
+  function dateFromFile(file){
+    let d=new Date(file.lastModified||Date.now());
+    if(isNaN(d.getTime())||d.getFullYear()<2020)d=new Date();
+    return d;
+  }
+  async function handleFile(file){
+    if(!file)return;
+    await processImage(URL.createObjectURL(file),dateFromFile(file));
+  }
+
+  $('btnCam').onclick=async()=>{
+    if(busy)return;
+    const Cam=isNative?plug('Camera'):null;
+    if(Cam){
+      try{
+        const ph=await Cam.getPhoto({quality:85,allowEditing:false,resultType:'dataUrl',source:'CAMERA',correctOrientation:true,saveToGallery:false});
+        if(ph&&ph.dataUrl){await processImage(ph.dataUrl,new Date());return}
+      }catch(e){
+        if(/cancel/i.test(String(e&&(e.message||e))))return;
+      }
+    }
+    $('fileCam').click();
+  };
+  $('btnGal').onclick=()=>{if(!busy)$('fileGal').click()};
+  ['fileCam','fileGal'].forEach(id=>$(id).addEventListener('change',e=>{handleFile(e.target.files[0]);e.target.value=''}));
+
+  function clearForm(){
+    $('code').value='';$('name').value='';$('stamp').textContent='—';
+    $('preview').style.display='none';$('preview').removeAttribute('src');
+    photoDate=null;status('');
+  }
+  $('btnClear').onclick=clearForm;
+
+  $('btnSave').onclick=()=>{
+    let code=$('code').value.trim().toUpperCase().split('/')[0].replace(/\s/g,'');
+    const name=$('name').value.trim().toUpperCase();
+    if(!code){toast('Falta el número de la etiqueta');$('code').focus();return}
+    if(!name){toast('Falta el nombre del destinatario');$('name').focus();return}
+    if(records.some(r=>r.codigo===code)&&!confirm('Este número ya fue registrado. ¿Guardarlo otra vez?'))return;
+    records.push({id:Date.now()+Math.random().toString(36).slice(2,6),codigo:code,destinatario:name,fecha:fmt(photoDate||new Date())});
+    try{persist()}catch(e){toast('No se pudo guardar (memoria llena)');records.pop();return}
+    render();clearForm();toast('✔ Guardado');
+  };
+
+  $('list').addEventListener('click',e=>{
+    const b=e.target.closest('.del');if(!b)return;
+    if(!confirm('¿Eliminar este registro?'))return;
+    records=records.filter(r=>r.id!==b.dataset.id);persist();render();
+  });
+
+  // ---------- Exportar CSV ----------
+  $('btnExport').onclick=async()=>{
+    if(!records.length){toast('No hay registros para exportar');return}
+    const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+    const rows=[['Numero','Destinatario','Fecha y hora']].concat(records.map(r=>[r.codigo,r.destinatario,r.fecha]));
+    const csv='﻿'+rows.map(r=>r.map(q).join(';')).join('\r\n');
+    const fname='cajas_'+fmt(new Date()).slice(0,10)+'.csv';
+    const FS=isNative?plug('Filesystem'):null, Sh=isNative?plug('Share'):null;
+    if(FS&&Sh){
+      try{
+        await FS.writeFile({path:fname,data:csv,directory:'CACHE',encoding:'utf8'});
+        const u=await FS.getUri({path:fname,directory:'CACHE'});
+        await Sh.share({title:'Registro de cajas',text:fname,url:u.uri,dialogTitle:'Enviar o guardar el archivo'});
+        return;
+      }catch(e){
+        if(/cancel/i.test(String(e&&(e.message||e))))return;
+        toast('No se pudo compartir; probando descarga…');
+      }
+    }
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download=fname;
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    toast('Archivo descargado');
+  };
+
+  $('btnWipe').onclick=()=>{
+    if(!records.length)return;
+    if(confirm('¿Borrar TODOS los registros? Exporta antes si los necesitas.')&&confirm('Última confirmación: se borrarán todos.')){
+      records=[];persist();render();toast('Registros borrados');
+    }
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>

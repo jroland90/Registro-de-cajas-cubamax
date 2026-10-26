@@ -1,0 +1,23 @@
+{
+  "name": "registro-cajas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Registro de cajas por foto de etiqueta (offline)",
+  "scripts": {
+    "prepare-www": "node scripts/prepare.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/camera": "^6.1.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/filesystem": "^6.0.2",
+    "@capacitor/share": "^6.0.3",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@zxing/library": "^0.21.3",
+    "tesseract.js": "^5.1.1",
+    "tesseract.js-core": "^5.1.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
+}

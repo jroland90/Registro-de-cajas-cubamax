@@ -1,0 +1,8 @@
+{
+  "appId": "com.registrocajas.app",
+  "appName": "Registro de Cajas",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}
